@@ -1,0 +1,29 @@
+# IntelliJ / WebStorm
+.idea/
+*.iml
+out/
+*.iws
+*.ipr
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Node / npm (if any)
+node_modules/
+dist/
+coverage/
+
+# Logs
+*.log
+
+# Environment / secrets
+.env
+*.env
+
+# Ignore everything in .github except workflows
+.github/*
+!.github/workflows/
+
+# Optional: ignore JetBrains scratch files
+*.shelf

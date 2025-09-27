@@ -1,0 +1,65 @@
+name: DESCO Balance Notification
+
+on:
+  schedule:
+    - cron: "0 * * * *"   # Runs every hour at minute 0
+  workflow_dispatch:       # Allows manual trigger
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Fetch Balance
+        id: fetch
+        run: |
+          # Fetch API response
+          response=$(curl --insecure -s "https://prepaid.desco.org.bd/api/unified/customer/getBalance?accountNo=17002101&meterNo=661120233559")
+          
+          # Extract balance
+          balance=$(echo "$response" | jq -r '.data.balance')
+          
+          # Pretty-print full response
+          pretty_response=$(echo "$response" | jq .)
+          
+          # Current time in Bangladesh
+          checked_at=$(TZ='Asia/Dhaka' date '+%Y-%m-%d %I:%M %p %Z')
+          
+          # Determine subject
+          if (( $(echo "$balance < 100" | bc -l) )); then
+            subject="⚠️ LOW BALANCE: ${balance} Tk (as of ${checked_at})"
+          else
+            subject="DESCO Balance: ${balance} Tk (as of ${checked_at})"
+          fi
+          
+          # Export variables for email step
+          echo "balance=$balance" >> $GITHUB_ENV
+          echo "checked_at=$checked_at" >> $GITHUB_ENV
+          echo "subject=$subject" >> $GITHUB_ENV
+          echo "response<<EOF" >> $GITHUB_ENV
+          echo "$pretty_response" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Send Email Notification
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USER }}   # Your Gmail
+          password: ${{ secrets.EMAIL_PASS }}   # App password
+          subject: ${{ env.subject }}
+          to: firozmahmud26@gmail.com
+          from: GitHub Actions <${{ secrets.EMAIL_USER }}>
+          body: |
+            Hello Firoz,
+
+            ✅ Current Balance: **${{ env.balance }} Tk**
+
+            🕒 Checked At: **${{ env.checked_at }}**
+
+            📋 Full API Response:
+            ```
+            ${{ env.response }}
+            ```
+
+            (Automatically checked every hour.)
