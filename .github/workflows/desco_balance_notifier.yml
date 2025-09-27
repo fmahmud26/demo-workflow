@@ -13,8 +13,8 @@ jobs:
       - name: Fetch Balance
         id: fetch
         run: |
-          # Fetch API response  A/C 17002101   M/N   661120233559     030410055423
-          response=$(curl --insecure -s "https://prepaid.desco.org.bd/api/unified/customer/getBalance?accountNo=&meterNo=030410055423")
+          # Fetch API response  A/C 17002101   M/N   661120233559     
+          response=$(curl --insecure -s "https://prepaid.desco.org.bd/api/unified/customer/getBalance?accountNo=17002101&meterNo=661120233559")
           
           # Extract balance
           balance=$(echo "$response" | jq -r '.data.balance')
