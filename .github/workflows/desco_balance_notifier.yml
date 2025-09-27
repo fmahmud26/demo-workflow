@@ -71,3 +71,15 @@ jobs:
                -X POST \
                -d "{\"content\": \"${{ env.subject }}\nBalance: ${{ env.balance }} Tk\nChecked At: ${{ env.checked_at }}\n\nFull API Response:\n\`\`\`${{ env.response }}\`\`\`\"}" \
                ${{ secrets.DISCORD_WEBHOOK }}
+          
+
+      - name: Send SMS Notification
+        run: |
+          SMS_API_KEY="${{ secrets.SMS_API_KEY }}"
+          MESSAGE="${{ env.subject }}"
+          TO_NUMBER="01744885126"   # Local Bangladesh number, no +88 needed
+          
+          curl -X POST "https://api.sms.net.bd/sendsms" \
+               -d "api_key=$SMS_API_KEY" \
+               -d "msg=$MESSAGE" \
+               -d "to=$TO_NUMBER"
