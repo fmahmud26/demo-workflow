@@ -64,3 +64,10 @@ jobs:
             ```
 
             (Automatically checked every hour.)
+
+      - name: Send Discord Notification
+        run: |
+          curl -H "Content-Type: application/json" \
+               -X POST \
+               -d "{\"content\": \"${{ env.subject }}\nBalance: ${{ env.balance }} Tk\nChecked At: ${{ env.checked_at }}\n\nFull API Response:\n\`\`\`${{ env.response }}\`\`\`\"}" \
+               ${{ secrets.DISCORD_WEBHOOK }}
