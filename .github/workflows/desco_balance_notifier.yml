@@ -4,7 +4,9 @@ on:
   schedule:
     # - cron: "0 * * * *"   # Runs every hour at minute 0
     # Runs every hour at minute 0 Bangladesh time (UTC+6)
-    - cron: "0 18-23,0-17 * * *"
+    #- cron: "0 18-23,0-17 * * *"
+    # Run every day at 8am in bdt
+    - cron: "0 2 * * *"
 
   workflow_dispatch:       # Allows manual trigger
 
