@@ -65,13 +65,27 @@ jobs:
 
             (Automatically checked every hour.)
 
+      
       - name: Send Discord Notification
         run: |
+          # Escape response for JSON
+          safe_response=$(echo "${{ env.response }}" | jq -Rs .)
+          
+          # Build JSON payload
+          payload=$(jq -n \
+            --arg subject "${{ env.subject }}" \
+            --arg balance "${{ env.balance }}" \
+            --arg checked_at "${{ env.checked_at }}" \
+            --arg response "$(echo "$safe_response" | jq -r .)" \
+            '{
+              content: "\($subject)\nBalance: \($balance) Tk\nChecked At: \($checked_at)\n\nFull API Response:\n```" + $response + "```"
+            }')
+          
+          # Send to Discord
           curl -H "Content-Type: application/json" \
                -X POST \
-               -d "{\"content\": \"${{ env.subject }}\nBalance: ${{ env.balance }} Tk\nChecked At: ${{ env.checked_at }}\n\nFull API Response:\n\`\`\`${{ env.response }}\`\`\`\"}" \
+               -d "$payload" \
                ${{ secrets.DISCORD_WEBHOOK }}
-          
 
       - name: Send SMS Notification
         run: |
