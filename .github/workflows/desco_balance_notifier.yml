@@ -65,7 +65,7 @@ jobs:
 
             (Automatically checked every hour.)
 
-      
+
       - name: Send Discord Notification
         run: |
           # Escape response safely for JSON
@@ -82,14 +82,30 @@ jobs:
                -X POST \
                -d "$payload" \
                ${{ secrets.DISCORD_WEBHOOK }}
+          
+          #- name: Send SMS Notification
+          # run: |
+          #  SMS_API_KEY="${{ secrets.SMS_API_KEY }}"
+          # MESSAGE="${{ env.subject }}"
+          #TO_NUMBER="01744885126"   # Local Bangladesh number, no +88 needed
+          
+          #curl -X POST "https://api.sms.net.bd/sendsms" \
+          #    -d "api_key=$SMS_API_KEY" \
+          #   -d "msg=$MESSAGE" \
+          #  -d "to=$TO_NUMBER"
 
-      - name: Send SMS Notification
+      - name: Send SMS Notification (if balance < 150)
         run: |
           SMS_API_KEY="${{ secrets.SMS_API_KEY }}"
-          MESSAGE="${{ env.subject }}"
+          BALANCE=${{ env.balance }}
           TO_NUMBER="01744885126"   # Local Bangladesh number, no +88 needed
           
-          curl -X POST "https://api.sms.net.bd/sendsms" \
-               -d "api_key=$SMS_API_KEY" \
-               -d "msg=$MESSAGE" \
-               -d "to=$TO_NUMBER"
+          if (( $(echo "$BALANCE < 150" | bc -l) )); then
+            MESSAGE="⚠️ LOW BALANCE: ${BALANCE} Tk (as of ${{ env.checked_at }})"
+            curl -X POST "https://api.sms.net.bd/sendsms" \
+                 -d "api_key=$SMS_API_KEY" \
+                 -d "msg=$MESSAGE" \
+                 -d "to=$TO_NUMBER"
+          else
+            echo "Balance is sufficient ($BALANCE Tk). SMS not sent."
+          fi
