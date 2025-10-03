@@ -94,13 +94,13 @@ jobs:
           #   -d "msg=$MESSAGE" \
           #  -d "to=$TO_NUMBER"
 
-      - name: Send SMS Notification (if balance < 150)
+      - name: Send SMS Notification (if balance < 100)
         run: |
           SMS_API_KEY="${{ secrets.SMS_API_KEY }}"
           BALANCE=${{ env.balance }}
           TO_NUMBER="01744885126"   # Local Bangladesh number, no +88 needed
           
-          if (( $(echo "$BALANCE < 150" | bc -l) )); then
+          if (( $(echo "$BALANCE < 100" | bc -l) )); then
             MESSAGE="⚠️ LOW BALANCE: ${BALANCE} Tk (as of ${{ env.checked_at }})"
             curl -X POST "https://api.sms.net.bd/sendsms" \
                  -d "api_key=$SMS_API_KEY" \
