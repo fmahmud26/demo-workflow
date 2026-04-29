@@ -3,8 +3,14 @@ name: DESCO Balance Notification
 on:
   schedule:
     - cron: "0 2 * * *"
+  workflow_dispatch:
 
-  workflow_dispatch:       # Allows manual trigger
+env:
+  DESCO_ACCOUNT_NO: ""
+  DESCO_METER_NO: "661120233559"
+  LOW_BALANCE_THRESHOLD: "100"
+  EMAIL_TO: "firozmahmud26@gmail.com"
+  SMS_TO_NUMBER: "01744885126"
 
 jobs:
   notify:
@@ -14,42 +20,37 @@ jobs:
       - name: Fetch Balance
         id: fetch
         run: |
-          # Fetch API response  A/C 17002101   M/N   661120233559     
-          response=$(curl --insecure -s "https://prepaid.desco.org.bd/api/tkdes/customer/getBalance?accountNo=&meterNo=661120233559")
-          
-          # Extract balance
+          set -euo pipefail
+
+          response="$(curl --insecure --silent "https://prepaid.desco.org.bd/api/tkdes/customer/getBalance?accountNo=${DESCO_ACCOUNT_NO}&meterNo=${DESCO_METER_NO}")"
           balance=$(echo "$response" | jq -r '.data.balance')
-          
-          # Pretty-print full response
           pretty_response=$(echo "$response" | jq .)
-          
-          # Current time in Bangladesh
           checked_at=$(TZ='Asia/Dhaka' date '+%Y-%m-%d %I:%M %p %Z')
-          
-          # Determine subject
-          if (( $(echo "$balance < 100" | bc -l) )); then
+
+          if (( $(echo "$balance < $LOW_BALANCE_THRESHOLD" | bc -l) )); then
             subject="⚠️ LOW BALANCE: ${balance} Tk (as of ${checked_at})"
           else
             subject="DESCO Balance: ${balance} Tk (as of ${checked_at})"
           fi
-          
-          # Export variables for email step
-          echo "balance=$balance" >> $GITHUB_ENV
-          echo "checked_at=$checked_at" >> $GITHUB_ENV
-          echo "subject=$subject" >> $GITHUB_ENV
-          echo "response<<EOF" >> $GITHUB_ENV
-          echo "$pretty_response" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+
+          {
+            echo "balance=$balance"
+            echo "checked_at=$checked_at"
+            echo "subject=$subject"
+            echo "response<<EOF"
+            echo "$pretty_response"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
 
       - name: Send Email Notification
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
           server_port: 465
-          username: ${{ secrets.EMAIL_USER }}   # Your Gmail
-          password: ${{ secrets.EMAIL_PASS }}   # App password
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
           subject: ${{ env.subject }}
-          to: firozmahmud26@gmail.com
+          to: ${{ env.EMAIL_TO }}
           from: GitHub Actions <${{ secrets.EMAIL_USER }}>
           body: |
             Hello Firoz,
@@ -63,49 +64,34 @@ jobs:
             ${{ env.response }}
             ```
 
-            (Automatically checked every hour.)
-
+            (Automatically checked on schedule.)
 
       - name: Send Discord Notification
         run: |
-          # Escape response safely for JSON
-          safe_response=$(echo "${{ env.response }}" | jq -Rs .)
-          
-          # Build full message in bash
-          message="${{ env.subject }}\nBalance: ${{ env.balance }} Tk\nChecked At: ${{ env.checked_at }}\n\nFull API Response:\n\`\`\`$(echo "$safe_response" | jq -r .)\`\`\`"
-          
-          # Create JSON payload
-          payload=$(jq -n --arg content "$message" '{content: $content}')
-          
-          # Send to Discord
-          curl -H "Content-Type: application/json" \
-               -X POST \
-               -d "$payload" \
-               ${{ secrets.DISCORD_WEBHOOK }}
-          
-          #- name: Send SMS Notification
-          # run: |
-          #  SMS_API_KEY="${{ secrets.SMS_API_KEY }}"
-          # MESSAGE="${{ env.subject }}"
-          #TO_NUMBER="01744885126"   # Local Bangladesh number, no +88 needed
-          
-          #curl -X POST "https://api.sms.net.bd/sendsms" \
-          #    -d "api_key=$SMS_API_KEY" \
-          #   -d "msg=$MESSAGE" \
-          #  -d "to=$TO_NUMBER"
+          set -euo pipefail
 
-      - name: Send SMS Notification (if balance < 100)
-        run: |
-          SMS_API_KEY="${{ secrets.SMS_API_KEY }}"
-          BALANCE=${{ env.balance }}
-          TO_NUMBER="01744885126"   # Local Bangladesh number, no +88 needed
-          
-          if (( $(echo "$BALANCE < 100" | bc -l) )); then
-            MESSAGE="⚠️ LOW BALANCE: ${BALANCE} Tk (as of ${{ env.checked_at }})"
-            curl -X POST "https://api.sms.net.bd/sendsms" \
-                 -d "api_key=$SMS_API_KEY" \
-                 -d "msg=$MESSAGE" \
-                 -d "to=$TO_NUMBER"
-          else
-            echo "Balance is sufficient ($BALANCE Tk). SMS not sent."
-          fi
+          safe_response=$(echo "${{ env.response }}" | jq -Rs .)
+
+          message="${{ env.subject }}\nBalance: ${{ env.balance }} Tk\nChecked At: ${{ env.checked_at }}\n\nFull API Response:\n\`\`\`$(echo "$safe_response" | jq -r .)\`\`\`"
+          payload=$(jq -n --arg content "$message" '{content: $content}')
+          curl -X POST \
+               -H "Content-Type: application/json" \
+               -d "$payload" \
+               "${{ secrets.DISCORD_WEBHOOK }}"
+
+      # - name: Send SMS Notification (if balance < 100)
+      #   run: |
+      #     set -euo pipefail
+      #     SMS_API_KEY="${{ secrets.SMS_API_KEY }}"
+      #     BALANCE="${{ env.balance }}"
+      #     TO_NUMBER="${{ env.SMS_TO_NUMBER }}"
+      #
+      #     if (( $(echo "$BALANCE < $LOW_BALANCE_THRESHOLD" | bc -l) )); then
+      #       MESSAGE="⚠️ LOW BALANCE: ${BALANCE} Tk (as of ${{ env.checked_at }})"
+      #       curl -X POST "https://api.sms.net.bd/sendsms" \
+      #            -d "api_key=$SMS_API_KEY" \
+      #            -d "msg=$MESSAGE" \
+      #            -d "to=$TO_NUMBER"
+      #     else
+      #       echo "Balance is sufficient ($BALANCE Tk). SMS not sent."
+      #     fi
