@@ -22,3 +22,6 @@ balance is not numeric.
 
 ## Secrets used
 EMAIL_USER, EMAIL_PASS, DISCORD_WEBHOOK (SMS_API_KEY only if SMS is re-enabled).
+
+## Keeping context in sync
+Cursor reads `.cursor/rules/project-context.mdc`, which mirrors this file. When one changes, update the other.
