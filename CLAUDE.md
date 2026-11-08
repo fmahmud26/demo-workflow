@@ -1,0 +1,24 @@
+# demo-workflow – project context
+
+Single GitHub Actions workflow: `.github/workflows/desco_balance_notifier.yml`
+(daily 00:00 UTC = 6 AM BDT, plus manual `workflow_dispatch`). It fetches the DESCO prepaid
+meter balance and notifies via Gmail (SMTP) and Discord webhook. The SMS step is commented out
+on purpose; do not re-enable unless asked.
+
+## Known issue (since 2026-11-08)
+DESCO replaced its portal. The old public endpoint
+`/api/tkdes/customer/getBalance` now returns `AUTHENTICATION_REQUIRED` (HTTP 401), so
+`.data.balance` was `null` and "null" was being sent. The workflow now fails loudly if the
+balance is not numeric.
+
+## Observed new portal API (from a browser capture, not yet implemented)
+- Needs login: cookie `DESCO_SESSION` + `XSRF-TOKEN` cookie mirrored in header `X-XSRF-TOKEN`.
+- `POST /api/accounts/<accountId>/realtime-balance` body `{"idempotencyKey":"<uuid>"}`
+  -> `{"status":"SUCCESS","balance":942.17,...,"remainingAttempts":2}` (rate-limited).
+- `GET /api/accounts/<accountId>/balance` = daily snapshot (response not yet seen).
+- Login flow endpoints: `/api/auth/csrf`, `/api/auth/login` (payload format not yet known).
+- Real fix = log in from the workflow using secrets (e.g. DESCO_USER / DESCO_PASS). Never
+  commit or paste session cookies/passwords.
+
+## Secrets used
+EMAIL_USER, EMAIL_PASS, DISCORD_WEBHOOK (SMS_API_KEY only if SMS is re-enabled).
