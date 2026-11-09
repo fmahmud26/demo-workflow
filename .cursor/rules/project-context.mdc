@@ -10,15 +10,22 @@ Single GitHub Actions workflow: `.github/workflows/desco_balance_notifier.yml`
 meter balance and notifies via Gmail (SMTP) and Discord webhook. The SMS step is commented out
 on purpose; do not re-enable unless asked.
 
-## Auth + balance (new portal, since 2026-11-08)
-DESCO replaced the public balance endpoint. The workflow now:
-1. `GET /api/auth/csrf` → `XSRF-TOKEN` cookie
-2. `POST /api/auth/login` with `{"username","password"}` + `X-XSRF-TOKEN`
-3. `GET /api/accounts` → pick linked account (filter by `DESCO_METER_NO` / `DESCO_ACCOUNT_NO`)
-4. `GET /api/accounts/<accountId>/balance` → daily snapshot (`.balance`)
+## Auth + balance (working since 2026-11-09)
+DESCO replaced the public balance endpoint (`/api/tkdes/customer/getBalance` → 401
+`AUTHENTICATION_REQUIRED`). The workflow now logs in and reads the daily snapshot:
+
+1. `GET /api/auth/csrf` → `XSRF-TOKEN` cookie (URL-decode; send as `X-XSRF-TOKEN` on POSTs)
+2. `POST /api/auth/login` body `{"username","password"}` (phone number works as username)
+3. `GET /api/accounts` → pick linked account (`DESCO_METER_NO` / `DESCO_ACCOUNT_NO` filters;
+   meter `661120233559` / accountNo `17002101` is the linked one)
+4. `GET /api/accounts/<accountId>/balance` → `.balance` (daily snapshot, not live)
 
 Prefer the daily snapshot over `POST .../realtime-balance` (rate-limited). Fail loudly if
 balance is not numeric. Never commit or paste session cookies/passwords.
+
+Notifications use a compact JSON summary (accountNo, meterNo, balance, currency,
+balanceSnapshotAt, stale, etc.). Do not dump full API `consumerMessages` into shell steps —
+multiline Bangla text breaks `${{ env.* }}` interpolation (Discord failed that way once).
 
 ## Secrets used
 DESCO_USER, DESCO_PASS, EMAIL_USER, EMAIL_PASS, DISCORD_WEBHOOK
