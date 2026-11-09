@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 
 env:
+  # Optional filters after login; leave blank to use the first linked account
   DESCO_ACCOUNT_NO: ""
   DESCO_METER_NO: "661120233559"
   LOW_BALANCE_THRESHOLD: "100"
@@ -19,15 +20,79 @@ jobs:
     steps:
       - name: Fetch Balance
         id: fetch
+        env:
+          DESCO_USER: ${{ secrets.DESCO_USER }}
+          DESCO_PASS: ${{ secrets.DESCO_PASS }}
         run: |
           set -euo pipefail
 
-          response="$(curl --insecure --silent "https://prepaid.desco.org.bd/api/tkdes/customer/getBalance?accountNo=${DESCO_ACCOUNT_NO}&meterNo=${DESCO_METER_NO}")"
-          balance=$(echo "$response" | jq -r '.data.balance // empty' 2>/dev/null || true)
+          if [[ -z "${DESCO_USER:-}" || -z "${DESCO_PASS:-}" ]]; then
+            echo "::error::Missing DESCO_USER / DESCO_PASS secrets. Add your prepaid.desco.org.bd login credentials."
+            exit 1
+          fi
+
+          cookie_jar="$(mktemp)"
+          trap 'rm -f "$cookie_jar"' EXIT
+          base="https://prepaid.desco.org.bd/api"
+
+          curl --insecure --silent --show-error --fail \
+            -c "$cookie_jar" -b "$cookie_jar" \
+            -H 'Accept: application/json' \
+            "$base/auth/csrf" >/dev/null
+
+          xsrf=$(awk '$6 == "XSRF-TOKEN" {print $7}' "$cookie_jar" | tail -n1)
+          if [[ -z "$xsrf" ]]; then
+            echo "::error::DESCO CSRF cookie missing after /api/auth/csrf"
+            exit 1
+          fi
+          xsrf=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.argv[1]))' "$xsrf")
+
+          login_http=$(curl --insecure --silent --show-error \
+            -o /tmp/desco_login.json -w '%{http_code}' \
+            -c "$cookie_jar" -b "$cookie_jar" \
+            -H 'Accept: application/json' \
+            -H 'Content-Type: application/json' \
+            -H "X-XSRF-TOKEN: $xsrf" \
+            -d "$(jq -n --arg u "$DESCO_USER" --arg p "$DESCO_PASS" '{username:$u,password:$p}')" \
+            "$base/auth/login")
+
+          if [[ "$login_http" != "200" && "$login_http" != "204" ]]; then
+            echo "::error::DESCO login failed (HTTP $login_http). Check DESCO_USER / DESCO_PASS. Body: $(cat /tmp/desco_login.json 2>/dev/null || true)"
+            exit 1
+          fi
+
+          # Login may rotate the CSRF cookie
+          xsrf=$(awk '$6 == "XSRF-TOKEN" {print $7}' "$cookie_jar" | tail -n1)
+          xsrf=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.argv[1]))' "$xsrf")
+
+          accounts_json=$(curl --insecure --silent --show-error --fail \
+            -c "$cookie_jar" -b "$cookie_jar" \
+            -H 'Accept: application/json' \
+            "$base/accounts")
+
+          account_id=$(echo "$accounts_json" | jq -r --arg meter "${DESCO_METER_NO}" --arg acct "${DESCO_ACCOUNT_NO}" '
+            .accounts
+            | if ($acct != "") then map(select(.accountNo == $acct))
+              elif ($meter != "") then map(select(.meterNo == $meter))
+              else . end
+            | .[0].accountId // empty
+          ')
+
+          if [[ -z "$account_id" ]]; then
+            echo "::error::No matching linked DESCO account. Link the meter in the portal, or set DESCO_ACCOUNT_NO / DESCO_METER_NO. Accounts: $accounts_json"
+            exit 1
+          fi
+
+          response=$(curl --insecure --silent --show-error --fail \
+            -c "$cookie_jar" -b "$cookie_jar" \
+            -H 'Accept: application/json' \
+            "$base/accounts/${account_id}/balance")
+
+          balance=$(echo "$response" | jq -r '.balance // empty' 2>/dev/null || true)
 
           # Fail loudly instead of sending "null" notifications
           if ! [[ "$balance" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
-            echo "::error::Could not read balance from DESCO API (the portal now requires login). Response: $response"
+            echo "::error::Could not read balance from DESCO API. Response: $response"
             exit 1
           fi
           pretty_response=$(echo "$response" | jq .)

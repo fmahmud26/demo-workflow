@@ -5,23 +5,19 @@ Single GitHub Actions workflow: `.github/workflows/desco_balance_notifier.yml`
 meter balance and notifies via Gmail (SMTP) and Discord webhook. The SMS step is commented out
 on purpose; do not re-enable unless asked.
 
-## Known issue (since 2026-11-08)
-DESCO replaced its portal. The old public endpoint
-`/api/tkdes/customer/getBalance` now returns `AUTHENTICATION_REQUIRED` (HTTP 401), so
-`.data.balance` was `null` and "null" was being sent. The workflow now fails loudly if the
-balance is not numeric.
+## Auth + balance (new portal, since 2026-11-08)
+DESCO replaced the public balance endpoint. The workflow now:
+1. `GET /api/auth/csrf` → `XSRF-TOKEN` cookie
+2. `POST /api/auth/login` with `{"username","password"}` + `X-XSRF-TOKEN`
+3. `GET /api/accounts` → pick linked account (filter by `DESCO_METER_NO` / `DESCO_ACCOUNT_NO`)
+4. `GET /api/accounts/<accountId>/balance` → daily snapshot (`.balance`)
 
-## Observed new portal API (from a browser capture, not yet implemented)
-- Needs login: cookie `DESCO_SESSION` + `XSRF-TOKEN` cookie mirrored in header `X-XSRF-TOKEN`.
-- `POST /api/accounts/<accountId>/realtime-balance` body `{"idempotencyKey":"<uuid>"}`
-  -> `{"status":"SUCCESS","balance":942.17,...,"remainingAttempts":2}` (rate-limited).
-- `GET /api/accounts/<accountId>/balance` = daily snapshot (response not yet seen).
-- Login flow endpoints: `/api/auth/csrf`, `/api/auth/login` (payload format not yet known).
-- Real fix = log in from the workflow using secrets (e.g. DESCO_USER / DESCO_PASS). Never
-  commit or paste session cookies/passwords.
+Prefer the daily snapshot over `POST .../realtime-balance` (rate-limited). Fail loudly if
+balance is not numeric. Never commit or paste session cookies/passwords.
 
 ## Secrets used
-EMAIL_USER, EMAIL_PASS, DISCORD_WEBHOOK (SMS_API_KEY only if SMS is re-enabled).
+DESCO_USER, DESCO_PASS, EMAIL_USER, EMAIL_PASS, DISCORD_WEBHOOK
+(SMS_API_KEY only if SMS is re-enabled).
 
 ## Keeping context in sync
 Cursor reads `.cursor/rules/project-context.mdc`, which mirrors this file. When one changes, update the other.
