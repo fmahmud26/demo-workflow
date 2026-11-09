@@ -95,7 +95,13 @@ jobs:
             echo "::error::Could not read balance from DESCO API. Response: $response"
             exit 1
           fi
-          pretty_response=$(echo "$response" | jq .)
+          # Compact summary for notifications (avoid multiline Bangla breaking shell steps)
+          pretty_response=$(echo "$response" | jq '{
+            accountNo, meterNo, balance, currency,
+            balanceSnapshotAt, stale, timestampAvailable,
+            currentMonthConsumedTaka, readingTime
+          }')
+          echo "$pretty_response" > "$RUNNER_TEMP/desco_response.json"
           checked_at=$(TZ='Asia/Dhaka' date '+%Y-%m-%d %I:%M %p %Z')
 
           if (( $(echo "$balance < $LOW_BALANCE_THRESHOLD" | bc -l) )); then
@@ -130,7 +136,7 @@ jobs:
 
             🕒 Checked At: **${{ env.checked_at }}**
 
-            📋 Full API Response:
+            📋 Balance Summary:
             ```
             ${{ env.response }}
             ```
@@ -138,17 +144,31 @@ jobs:
             (Automatically checked on schedule.)
 
       - name: Send Discord Notification
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
           set -euo pipefail
 
-          safe_response=$(echo "${{ env.response }}" | jq -Rs .)
+          payload=$(jq -n \
+            --arg subject "$subject" \
+            --arg balance "$balance" \
+            --arg checked_at "$checked_at" \
+            --slurpfile summary "$RUNNER_TEMP/desco_response.json" \
+            '{
+              content: (
+                $subject
+                + "\nBalance: " + $balance + " Tk"
+                + "\nChecked At: " + $checked_at
+                + "\n\n```json\n"
+                + ($summary[0] | tostring)
+                + "\n```"
+              )
+            }')
 
-          message="${{ env.subject }}\nBalance: ${{ env.balance }} Tk\nChecked At: ${{ env.checked_at }}\n\nFull API Response:\n\`\`\`$(echo "$safe_response" | jq -r .)\`\`\`"
-          payload=$(jq -n --arg content "$message" '{content: $content}')
-          curl -X POST \
+          curl --fail-with-body -X POST \
                -H "Content-Type: application/json" \
                -d "$payload" \
-               "${{ secrets.DISCORD_WEBHOOK }}"
+               "$DISCORD_WEBHOOK"
 
       # - name: Send SMS Notification (if balance < 100)
       #   run: |
